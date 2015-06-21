@@ -4,6 +4,9 @@
   require_once "../../functions.php";
   
   $minactive = 5;
+  date_default_timezone_set('asia/jakarta');
+  $deletepage = "delete.php";
+  $viewpage = "view.php";
 
   $typedisplay = array(
     "Lock Door",
@@ -43,10 +46,9 @@
     global $tabledisplay;
     echo <<<_END
       <div>
+        <form>
         <div>
-          <form>
-            <span>Urut Berdasarkan: </span>
-            <select name="sort">
+          <select name="sort">
 _END;
 
     /******* Display Select Element of Sort By *******/
@@ -59,14 +61,16 @@ _END;
       echo "<option value=\"$index\"$selected>$value</option>";
     }
 
+    $search = $data['search'];
     echo <<<_END
             </select>
-            <button>Sort</button>
+            <button>Urutkan</button>
         </div>
         <div>
-            <input type="text" name="search">
+            <input type="text" name="search" value="$search">
             <input type="submit" value="Cari">
         </div>
+        </form>
       </div>
 _END;
   }
@@ -79,7 +83,12 @@ _END;
     $searchquery = "";
     $sortquery = "";
     if ($sort != "")
-      $sortquery = "ORDER BY $sort";
+    {
+      if ($sort == "status")
+        $sortquery = "ORDER BY lastactive DESC";
+      else
+        $sortquery = "ORDER BY $sort";
+    }
     if ($search != "")
     {
       /******* SEARCH in id, room, ip, date of regtime *******/
@@ -99,7 +108,6 @@ _END;
     }
     /******* GENERATE search query *******/
     $query = "SELECT id,type,room,INET_NTOA(ip) as ip, UNIX_TIMESTAMP(regtime) as regtime, UNIX_TIMESTAMP(lastactive) as lastactive, activated FROM devices $searchquery $sortquery"; 
-    echo $query;
 
     /******* SQL Query *******/
     $sqlresult = queryMysql($query);
@@ -133,9 +141,13 @@ _END;
 
   /*******  Function for display list for data             *******/
   /*******  It's expecting data from searchdevice function *******/
-  function makelist($data)
+  function makedevicelist($data)
   {
-    date_default_timezone_set('asia/jakarta');
+    if (count($data) == 0)
+    {
+      echo "<div>Tidak Ada Data</div>";
+      return;
+    }
     global $tabledisplay;
     echo "<table><tr><th></th>";
     /****** Display Table Header ******/
@@ -147,7 +159,8 @@ _END;
     /******* Display Content *******/
     foreach($data as $device)
     {
-      echo '<tr><td><input type="checkbox" name="device[]"></td>';
+      $id = $device['id'];
+      echo "<tr><td><input type=\"checkbox\" name=\"id[]\" value=\"$id\"></td>";
       foreach($tabledisplay as $index => $value)
       {
         echo "<td>";
@@ -166,6 +179,12 @@ _END;
           $year = date("Y");
           echo "$day $monthdisplay[$month] $year";
         }
+        else if($index == "type")
+        {
+          global $typedisplay;
+          $type = $device['type'];
+          echo "$typedisplay[$type]";
+        }
         else
         {
           echo $device[$index];
@@ -173,8 +192,34 @@ _END;
         echo "</td>";
       }
       $id = $device['id'];
-      echo "<td><span><a href=\"view.php?id=$id\">View</a></span><span><a href=\"delete.php?id=$id\">Delete</a></span></td></tr>";
+      global $deletepage;
+      global $viewpage;
+      echo "<td><span><a href=\"$viewpage?id=$id\">View</a></span><span><a href=\"$deletepage?id=$id\">Delete</a></span></td></tr>";
     }
     echo "</table>";
+  }
+
+  function getdevicedata($id)
+  {
+    $query = "SELECT id, type, room, user, INET_NTOA(ip) as ip, UNIX_TIMESTAMP(regtime) as regtime, UNIX_TIMESTAMP(lastactive) as lastactive, activated FROM devices WHERE id='$id'";
+    $result = queryMysql($query);
+    if (!$result) return FALSE;
+    $num = $result->num_rows;
+    if ($num > 0)
+    {
+      $device = $result->fetch_array(MYSQLI_ASSOC);
+    }
+    else
+      return FALSE;
+    $device['status'] = 0;
+    if ($device['activated'])
+    {
+      global $minactive;
+      if (time() - $device['status'] <= $minactive)
+        $device['status'] = 2;
+      else
+        $device['status'] = 1;
+    }
+    return $device;
   }
 ?>
